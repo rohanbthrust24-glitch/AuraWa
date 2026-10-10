@@ -21,10 +21,11 @@ original placeholder README.
 
 ## AuraWa changes relative to upstream
 
-The application is unmodified: no file under `src/` (other than the two repository-policy specs listed below),
-`dashboard/`, `sdk/`, `test/`, the package manifests or the lockfiles differs from upstream, and the runtime
-behaviour, API, internal package names and `X-OpenWA-*` webhook headers are upstream's. AuraWa's changes are limited
-to repository automation, image identity and documentation.
+AuraWa does not modify OpenWA's application code: no file under `src/` (other than the two repository-policy specs
+listed below), `dashboard/` (other than its lockfile), `sdk/` or `test/`, and neither `package.json`, differs from
+upstream, and the API, internal package names and `X-OpenWA-*` webhook headers are upstream's. AuraWa's changes are
+limited to repository automation, image identity, documentation, and security updates of locked dependency versions
+within the ranges upstream declares.
 
 ### 2026-10-10: independent build identity and safe repository automation
 
@@ -43,6 +44,26 @@ to repository automation, image identity and documentation.
 | `docs/aurawa/auraclinic-compatibility.md`                                                       | New (2026-10-10 standalone compatibility test)                                                                                                                                                                                                                                                                                                                        | AuraClinic driver checklist and the isolated test result                                              |
 | `src/common/ci-privilege-gate.spec.ts`, `src/common/release-gate-parity.spec.ts`                | Repository-policy assertions updated to AuraWa's policy (CI never publishes; one prerelease rule decided by the release tag step)                                                                                                                                                                                                                                     | These specs read the workflow files; they pinned upstream's publishing policy                         |
 | `UPSTREAM.md`                                                                                   | This file                                                                                                                                                                                                                                                                                                                                                             | Provenance and change record                                                                          |
+
+### 2026-10-10: dependency security updates (lockfiles only)
+
+The first AuraWa CI run failed its audit gate on advisories published after the copied lockfiles were generated. Each
+fixed version lies inside the range the dependency tree already declares, so both `package.json` files are unchanged
+and no override was added; upstream's own CHANGELOG likewise bumps the lockfile when the range allows and uses an
+override only when it does not. `@modelcontextprotocol/sdk` and `shell-quote` are locked at the first fixed release even
+though newer in-range releases exist, to keep the change minimal.
+
+| Lockfile                      | Package (how it enters)                                                                                        | Version         | Advisories                                                                          | Ships in the image           |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------- | --------------- | ----------------------------------------------------------------------------------- | ---------------------------- |
+| `package-lock.json`           | `proxy-addr` (via `express`, `^2.0.7`)                                                                         | 2.0.7 → 2.0.8   | GHSA-jqcg-44mw-7w3h (critical)                                                      | yes                          |
+| `package-lock.json`           | `@modelcontextprotocol/sdk` (direct, `^1.30.0`)                                                                | 1.30.0 → 1.31.0 | GHSA-6qxp-vccf-f47h (high)                                                          | yes                          |
+| `package-lock.json`           | `sharp` (direct, `^0.35.4`), with its `@img/sharp-*` 0.35.5 and `@img/sharp-libvips-*` 1.3.4 platform packages | 0.35.4 → 0.35.5 | GHSA-wq5f-xc86-pv6w (high)                                                          | yes                          |
+| `package-lock.json`           | `shell-quote` (via `concurrently`; upstream's override `^1.10.0`)                                              | 1.10.0 → 1.11.0 | GHSA-pqg4-j6r4-53mv (critical)                                                      | no (dev)                     |
+| `package-lock.json`           | `handlebars` (via `ts-jest`, `^4.7.9`)                                                                         | 4.7.9 → 4.7.10  | GHSA-8r5x-fm3f-whwj, GHSA-p8wg-vrv2-v86f (critical), GHSA-xw65-4hp5-5hc7 (moderate) | no (dev)                     |
+| `dashboard/package-lock.json` | `source-map-js` (via `postcss` and `css-tree`, `^1.2.1`)                                                       | 1.2.1 → 1.2.2   | GHSA-68fv-2mgg-jv7q (high)                                                          | no (dashboard build tooling) |
+
+When AuraWa is re-based onto a newer upstream release, keep these versions only if that release's lockfiles still
+carry older ones.
 
 ### Reviewed and deliberately left as upstream
 
