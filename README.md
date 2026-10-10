@@ -1,3 +1,13 @@
+> [!NOTE]
+> **This is AuraWa**, an independently maintained distribution of
+> [OpenWA](https://github.com/rmyndharis/OpenWA) by Yudhi Armyndharis and the OpenWA contributors,
+> based on OpenWA v0.24.0 and used under its [MIT License](LICENSE). Exactly what was copied and every
+> AuraWa change since is recorded in [UPSTREAM.md](UPSTREAM.md); AuraWa builds, versions and images are
+> described in [docs/aurawa/building.md](docs/aurawa/building.md). The rest of this README is upstream
+> OpenWA's documentation, kept as-is: its runtime naming (the `openwa` package, `OpenWA` UI and API
+> titles, `X-OpenWA-*` webhook headers) is unchanged in AuraWa. To support upstream development, see
+> the [OpenWA project](https://github.com/rmyndharis/OpenWA).
+
 <p align="center">
   <img src="docs/logo/openwa_logo.webp" alt="OpenWA Logo" width="200"/>
 </p>
@@ -16,14 +26,13 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/rmyndharis/OpenWA/actions/workflows/ci.yml"><img src="https://github.com/rmyndharis/OpenWA/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"/></a>
-  <img src="https://img.shields.io/github/package-json/v/rmyndharis/OpenWA?label=version&color=blue" alt="Version"/>
+  <a href="https://github.com/rohanbthrust24-glitch/AuraWa/actions/workflows/ci.yml"><img src="https://github.com/rohanbthrust24-glitch/AuraWa/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"/></a>
+  <img src="https://img.shields.io/github/package-json/v/rohanbthrust24-glitch/AuraWa?label=upstream%20base&color=blue" alt="Upstream base version"/>
   <img src="https://img.shields.io/badge/license-MIT-green.svg" alt="License"/>
   <img src="https://img.shields.io/badge/node-22_LTS-brightgreen.svg" alt="Node"/>
   <img src="https://img.shields.io/github/package-json/dependency-version/rmyndharis/OpenWA/@nestjs/core?label=NestJS&color=red" alt="NestJS"/>
   <img src="https://img.shields.io/badge/docker-ready-blue.svg" alt="Docker"/>
   <img src="https://img.shields.io/github/package-json/dependency-version/rmyndharis/OpenWA/dev/typescript?label=TypeScript&color=3178C6" alt="TypeScript"/>
-  <a href="https://buymeacoffee.com/rmyndharis"><img src="https://img.shields.io/badge/Buy_Me_a_Coffee-support-FFDD00?logo=buymeacoffee&logoColor=black" alt="Buy Me a Coffee"/></a>
 </p>
 
 ---

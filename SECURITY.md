@@ -18,11 +18,13 @@ lines receive no backports — please upgrade older deployments.
 
 **Please do not open a public issue, discussion, or PR for a security vulnerability.**
 
-Report it privately through either channel:
+AuraWa is an independently maintained distribution of OpenWA (see [UPSTREAM.md](UPSTREAM.md)).
+Report a vulnerability in AuraWa privately through a GitHub Security Advisory at
+<https://github.com/rohanbthrust24-glitch/AuraWa/security/advisories/new>.
 
-- **GitHub Security Advisories** (preferred) — open a private report at
-  <https://github.com/rmyndharis/OpenWA/security/advisories/new>
-- **Email** — yudhi@rmyndharis.com
+If the issue also affects upstream OpenWA, the AuraWa maintainers coordinate disclosure with the
+upstream project, which accepts private reports at
+<https://github.com/rmyndharis/OpenWA/security/advisories/new>.
 
 Please include, where possible:
 

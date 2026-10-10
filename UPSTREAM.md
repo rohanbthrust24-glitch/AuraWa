@@ -1,0 +1,74 @@
+# Upstream Provenance
+
+AuraWa is an independently maintained source copy of OpenWA. It is not a GitHub fork, and upstream
+Git history was not imported.
+
+| Item                | Value                                                                |
+| ------------------- | -------------------------------------------------------------------- |
+| Upstream repository | https://github.com/rmyndharis/OpenWA                                 |
+| Upstream version    | `v0.24.0`                                                            |
+| Upstream commit     | `e9afb97da44fa1f3c1fdc469a134a706394eda46`                           |
+| Upstream tag object | `c59f50c90ebde50f109954e619906dfaf64b61a3` (annotated tag `v0.24.0`) |
+| Upstream tree       | `1cc504cd535603cded3af0056986582fd6625a96`                           |
+| Date of source copy | 2026-10-10                                                           |
+
+## Source copy
+
+On 2026-10-10 every file tracked at the upstream commit above (1,859 files) was copied into AuraWa, byte- and
+mode-identical to the upstream tree (verified by rebuilding a git tree object from the copy and matching the upstream
+tree hash, and by `diff -r`). Only upstream's `.git/` history was left out. The upstream `README.md` replaced AuraWa's
+original placeholder README.
+
+## AuraWa changes relative to upstream
+
+The application is unmodified: no file under `src/` (other than the two repository-policy specs listed below),
+`dashboard/`, `sdk/`, `test/`, the package manifests or the lockfiles differs from upstream, and the runtime
+behaviour, API, internal package names and `X-OpenWA-*` webhook headers are upstream's. AuraWa's changes are limited
+to repository automation, image identity and documentation.
+
+### 2026-10-10: independent build identity and safe repository automation
+
+| File                                                                                            | Change                                                                                                                                                                                                                                                                                                                                                                | Why                                                                                                   |
+| ----------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `.github/workflows/ci.yml`                                                                      | The `docker` job builds and smoke-tests both architectures but no longer logs in, holds `packages: write`, pushes, or moves a `:main` tag                                                                                                                                                                                                                             | An ordinary push must not publish an image                                                            |
+| `.github/workflows/release.yml`                                                                 | Triggers only on `v*-aurawa.*` tags; the lint job validates the tag against `package.json` and decides the prerelease flag once; publishes to `ghcr.io/<this repo>` only (Docker Hub and upstream's namespace removed); tags the exact version plus `latest` for non-prereleases; staging cleanup uses this repo's package name; release notes name the upstream base | Image publishing tied to an intentional AuraWa release, never to upstream tags or upstream registries |
+| `.github/workflows/security-scan.yml`                                                           | The weekly image scan skips with a notice until a stable AuraWa release exists (only on an HTTP 404 from the releases API)                                                                                                                                                                                                                                            | `latest` does not exist before the first release; audit and base-image drift jobs unchanged           |
+| `.github/workflows/{js,python,java,php}-sdk-release.yml`, `.github/workflows/split-php-sdk.yml` | Publishing jobs guarded with `if: github.repository == 'rmyndharis/OpenWA'`                                                                                                                                                                                                                                                                                           | The SDK packages and the PHP split repository are upstream-owned                                      |
+| `.github/FUNDING.yml`                                                                           | Removed                                                                                                                                                                                                                                                                                                                                                               | GitHub's Sponsor button would present upstream's personal funding link as AuraWa's                    |
+| `.github/ISSUE_TEMPLATE/*.yml`, `SECURITY.md`                                                   | Docs, security-advisory and SECURITY links point to AuraWa; SECURITY.md routes reports to AuraWa and notes upstream coordination                                                                                                                                                                                                                                      | Vulnerability reports about AuraWa should reach its maintainers                                       |
+| `README.md`                                                                                     | AuraWa notice at the top; CI and version badges point to AuraWa; upstream support link moved into the notice                                                                                                                                                                                                                                                          | Clear identity without rewriting upstream documentation                                               |
+| `Dockerfile`                                                                                    | Copies `LICENSE` and `UPSTREAM.md` into `/app`; adds `AURAWA_VERSION` / `AURAWA_REVISION` build args, matching `ENV`, and OCI labels, all after the last heavy layer                                                                                                                                                                                                  | MIT notice ships with every image; every image identifies its exact source revision                   |
+| `scripts/aurawa-docker-build.sh`                                                                | New: supported local build command that derives version and commit from git                                                                                                                                                                                                                                                                                           | Reproducible, identifiable local builds                                                               |
+| `docs/aurawa/building.md`, `docs/aurawa/auraclinic-integration.md`                              | New                                                                                                                                                                                                                                                                                                                                                                   | Build, versioning and release contract; AuraClinic integration contract                               |
+| `docs/aurawa/auraclinic-compatibility.md`                                                       | New (2026-10-10 standalone compatibility test)                                                                                                                                                                                                                                                                                                                        | AuraClinic driver checklist and the isolated test result                                              |
+| `src/common/ci-privilege-gate.spec.ts`, `src/common/release-gate-parity.spec.ts`                | Repository-policy assertions updated to AuraWa's policy (CI never publishes; one prerelease rule decided by the release tag step)                                                                                                                                                                                                                                     | These specs read the workflow files; they pinned upstream's publishing policy                         |
+| `UPSTREAM.md`                                                                                   | This file                                                                                                                                                                                                                                                                                                                                                             | Provenance and change record                                                                          |
+
+### Reviewed and deliberately left as upstream
+
+- Runtime branding: the OpenAPI contact (`src/config/swagger.config.ts`, mirrored in `openapi.json`), dashboard titles,
+  the `openwa` user and package name, `X-OpenWA-*` headers. Changing them alters the API contract clients depend on.
+- `charts/openwa` (image `ghcr.io/rmyndharis/openwa`, upstream home/sources): AuraClinic does not use the chart, and
+  AuraWa has no published image yet. Repoint it together with the first AuraWa release if the chart is ever used.
+- `docker-compose.yml` / `docker-compose.dev.yml`: upstream's reference stack; they build from the local source.
+- `CHANGELOG.md` and `docs/` (other than `docs/aurawa/`): upstream's history and documentation.
+- `.github/dependabot.yml`, `sdk-ci.yml`, `.env.example`, `.env.minimal`: still correct for AuraWa.
+
+## Keeping this record current
+
+Every AuraWa change to a file that came from upstream must be added to the change list above, so the divergence from
+upstream stays auditable and can be re-applied when AuraWa is re-based onto a newer OpenWA release
+(docs/aurawa/building.md).
+
+## License obligations
+
+OpenWA is distributed under the MIT License, `Copyright (c) 2026 Yudhi Armyndharis and OpenWA
+Contributors`. The upstream `LICENSE` file is retained unchanged at the repository root and is copied into every
+AuraWa image as `/app/LICENSE`.
+
+The MIT License requires the copyright notice and permission notice to be included in all copies or
+substantial portions of the software. Keep `LICENSE` and the upstream copyright notice in this
+repository, in source distributions, and in any distributed builds or images derived from it, even if
+the code is later modified or renamed. Third-party dependencies (see `package-lock.json`,
+`dashboard/package-lock.json` and the SDK manifests under `sdk/`) carry their own licenses, which
+continue to apply.

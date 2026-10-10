@@ -299,6 +299,27 @@ COPY scripts/backup.sh scripts/restore.sh scripts/lib-env.sh ./scripts/
 COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
+# AuraWa: ship the MIT notice with every image (it covers distributed copies, not only the source
+# tree) together with the provenance record. Nothing reads these files at runtime.
+COPY LICENSE UPSTREAM.md ./
+
+# AuraWa: distribution identity. release.yml and scripts/aurawa-docker-build.sh pass the release
+# version (0.24.0-aurawa.1) and the exact git commit; a plain `docker build` falls back to dev/unknown
+# so an unidentified build is recognisable as one. Declared after every heavy layer so a new
+# version or commit only rebuilds these metadata layers. The ENV copies let a running container
+# report its identity (`docker exec <container> printenv AURAWA_VERSION`); the app never reads them.
+ARG AURAWA_VERSION=dev
+ARG AURAWA_REVISION=unknown
+ENV AURAWA_VERSION=${AURAWA_VERSION} \
+    AURAWA_REVISION=${AURAWA_REVISION}
+LABEL org.opencontainers.image.title="AuraWa" \
+      org.opencontainers.image.description="AuraWa WhatsApp HTTP API gateway, an independently maintained distribution of OpenWA" \
+      org.opencontainers.image.source="https://github.com/rohanbthrust24-glitch/AuraWa" \
+      org.opencontainers.image.licenses="MIT" \
+      org.opencontainers.image.version="${AURAWA_VERSION}" \
+      org.opencontainers.image.revision="${AURAWA_REVISION}" \
+      aurawa.upstream.repository="https://github.com/rmyndharis/OpenWA"
+
 # Expose port
 EXPOSE 2785
 

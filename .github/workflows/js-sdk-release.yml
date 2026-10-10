@@ -26,6 +26,9 @@ permissions:
 
 jobs:
   publish:
+    # AuraWa: @rmyndharis/openwa is an upstream-owned package. This job runs only in the upstream
+    # repository, so no AuraWa tag or manual dispatch can publish or release it.
+    if: github.repository == 'rmyndharis/OpenWA'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     defaults:

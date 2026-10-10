@@ -81,17 +81,36 @@ describe('release gate parity (the tag path runs every branch gate)', () => {
  * GitHub Release matched only -rc/-beta/-alpha, a tag such as v1.2.0-next.1 stayed off `latest` on
  * the registries yet became GitHub's "Latest" release, which is what the in-app update check reads.
  */
+/**
+ * AuraWa: every release tag contains `-aurawa.`, so upstream's "any '-' in the tag is a prerelease"
+ * test would mark every AuraWa release a prerelease. The lint job's tag step decides it once, and the
+ * GitHub Release flag, the `latest` channel and the promote job's own skip all read that one output.
+ */
 describe('one prerelease rule across the GitHub Release and the image channels', () => {
-  type ReleaseStep = { uses?: string; run?: string; with?: { prerelease?: string; tags?: string } };
-  const PREDICATE = "contains(github.ref_name, '-')";
-  const steps = (): ReleaseStep[] => {
-    const workflow = yaml.load(fs.readFileSync(path.join(workflowDir, 'release.yml'), 'utf8')) as {
-      jobs?: Record<string, { steps?: ReleaseStep[] }>;
-    };
-    return Object.values(workflow.jobs ?? {}).flatMap(job => job.steps ?? []);
+  type ReleaseStep = {
+    id?: string;
+    uses?: string;
+    run?: string;
+    env?: Record<string, string>;
+    with?: { prerelease?: string; tags?: string };
   };
+  type ReleaseJob = { needs?: string[]; outputs?: Record<string, string>; steps?: ReleaseStep[] };
+  const PREDICATE = "needs.lint.outputs.prerelease == 'true'";
+  const NEGATED = "needs.lint.outputs.prerelease != 'true'";
+  const jobs = (): Record<string, ReleaseJob> =>
+    (yaml.load(fs.readFileSync(path.join(workflowDir, 'release.yml'), 'utf8')) as { jobs?: Record<string, ReleaseJob> })
+      .jobs ?? {};
+  const steps = (): ReleaseStep[] => Object.values(jobs()).flatMap(job => job.steps ?? []);
 
-  it('flags the GitHub Release prerelease by the predicate that keeps a tag off X.Y and latest', () => {
+  it('decides the prerelease flag once, in the lint job tag step', () => {
+    const lint = jobs().lint;
+    expect(lint?.outputs?.prerelease).toBe('${{ steps.tag.outputs.prerelease }}');
+    expect(lint?.outputs?.version).toBe('${{ steps.tag.outputs.version }}');
+    // Every job that reads the decision has lint as a direct dependency, or the output is empty.
+    for (const name of ['docker', 'promote', 'release']) expect(jobs()[name]?.needs).toContain('lint');
+  });
+
+  it('flags the GitHub Release prerelease by the rule that keeps a tag off latest', () => {
     const ghRelease = steps().filter(step => (step.uses ?? '').startsWith('softprops/action-gh-release'));
     expect(ghRelease).toHaveLength(1);
     expect((ghRelease[0].with?.prerelease ?? '').trim()).toBe(`\${{ ${PREDICATE} }}`);
@@ -101,12 +120,64 @@ describe('one prerelease rule across the GitHub Release and the image channels',
       .map(step => step.with?.tags ?? '')
       .join('\n');
     const enables = [...tagRules.matchAll(/enable=\$\{\{\s*(.*?)\s*\}\}/g)].map(match => match[1]);
-    // Non-vacuity: the X.Y and latest channels are both gated.
-    expect(enables.length).toBeGreaterThanOrEqual(2);
-    expect(enables.filter(expr => expr !== `!${PREDICATE}`)).toEqual([]);
+    // Non-vacuity: the latest channel is gated.
+    expect(enables.length).toBeGreaterThanOrEqual(1);
+    expect(enables.filter(expr => expr !== NEGATED)).toEqual([]);
 
-    // The promote job's own skip for minor tags uses the same '-' test in bash.
-    expect(steps().some(step => /\[\[ "\$REF_NAME" == \*-\* \]\]/.test(step.run ?? ''))).toBe(true);
+    // The promote job's own skip for `latest` reads the same output in bash.
+    const promote = steps().filter(step => /\[ "\$PRERELEASE" = "true" \]/.test(step.run ?? ''));
+    expect(promote).toHaveLength(1);
+    expect(promote[0].env?.PRERELEASE).toBe('${{ needs.lint.outputs.prerelease }}');
+  });
+
+  describe('the tag step', () => {
+    const pkgVersion = (
+      JSON.parse(fs.readFileSync(path.join(__dirname, '..', '..', 'package.json'), 'utf8')) as { version: string }
+    ).version;
+    const run = (tag: string): { status: number | null; outputs: Record<string, string> } => {
+      const step = (jobs().lint?.steps ?? []).find(candidate => candidate.id === 'tag');
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-tag-'));
+      try {
+        const output = path.join(dir, 'output');
+        fs.writeFileSync(output, '');
+        // The runner's default shell for `run:` steps, from the repository root like the job.
+        const result = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', step?.run ?? 'exit 99'], {
+          cwd: path.join(__dirname, '..', '..'),
+          env: { ...process.env, TAG: tag, GITHUB_OUTPUT: output },
+        });
+        const outputs = Object.fromEntries(
+          fs
+            .readFileSync(output, 'utf8')
+            .split('\n')
+            .filter(Boolean)
+            .map(line => line.split('=', 2) as [string, string]),
+        );
+        return { status: result.status, outputs };
+      } finally {
+        fs.rmSync(dir, { recursive: true, force: true });
+      }
+    };
+
+    it.each([
+      [`v${pkgVersion}-aurawa.1`, `${pkgVersion}-aurawa.1`, 'false'],
+      [`v${pkgVersion}-aurawa.12`, `${pkgVersion}-aurawa.12`, 'false'],
+      [`v${pkgVersion}-aurawa.2-rc.1`, `${pkgVersion}-aurawa.2-rc.1`, 'true'],
+    ])('accepts %s as version %s (prerelease=%s)', (tag, version, prerelease) => {
+      expect(run(tag)).toEqual({ status: 0, outputs: { version, prerelease } });
+    });
+
+    it.each([
+      `v${pkgVersion}`,
+      `v${pkgVersion}-aurawa.0`,
+      `v${pkgVersion}-aurawa.01`,
+      `v${pkgVersion}-aurawa.`,
+      `v${pkgVersion}-aurawa.1.5`,
+      `v${pkgVersion}-aurawa.1-`,
+      `v${pkgVersion}-aurawa.1-rc..1`,
+      `v99.0.0-aurawa.1`,
+    ])('rejects %s without writing an output', tag => {
+      expect(run(tag)).toEqual({ status: 1, outputs: {} });
+    });
   });
 });
 

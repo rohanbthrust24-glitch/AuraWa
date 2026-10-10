@@ -1,5 +1,5 @@
 name: Bug report
-description: Report a problem with OpenWA
+description: Report a problem with AuraWa
 title: "[Bug]: "
 labels: ["bug"]
 body:
@@ -10,7 +10,7 @@ body:
         version, deployment, and logs make a huge difference for triage.
 
         ⚠️ **Do not report security vulnerabilities here.** See
-        [SECURITY.md](https://github.com/rmyndharis/OpenWA/blob/main/SECURITY.md).
+        [SECURITY.md](https://github.com/rohanbthrust24-glitch/AuraWa/blob/main/SECURITY.md).
   - type: checkboxes
     attributes:
       label: Pre-flight
@@ -22,9 +22,9 @@ body:
   - type: input
     id: version
     attributes:
-      label: OpenWA version
-      description: e.g. 0.2.1 (shown on the dashboard Login screen) or a commit SHA
-      placeholder: "0.2.1"
+      label: AuraWa version
+      description: e.g. 0.24.0-aurawa.1 (the image tag, or `AURAWA_VERSION` inside the container) or a commit SHA
+      placeholder: "0.24.0-aurawa.1"
     validations:
       required: true
   - type: dropdown

@@ -49,6 +49,9 @@ jobs:
     name: Mirror sdk/php -> rmyndharis/openwa-php
     # Never mirror an untested (red) SDK to Packagist dev-main.
     needs: [test]
+    # AuraWa: the mirror target is upstream's split repository. This job runs only in the upstream
+    # repository; the PHP SDK tests above still run on AuraWa pushes.
+    if: github.repository == 'rmyndharis/OpenWA'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

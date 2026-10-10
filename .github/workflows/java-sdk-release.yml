@@ -19,6 +19,9 @@ permissions:
 
 jobs:
   publish:
+    # AuraWa: the Java SDK artifact is upstream-owned. This job runs only in the upstream repository,
+    # so no AuraWa tag or manual dispatch can publish or release it.
+    if: github.repository == 'rmyndharis/OpenWA'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     defaults:

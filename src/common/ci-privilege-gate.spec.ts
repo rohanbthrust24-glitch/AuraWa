@@ -434,17 +434,16 @@ describe('deployment docs describe what the entrypoint, probes and backup script
 });
 
 /**
- * `ghcr.io/<repo>:main` is the channel an operator pulls to track main. Two things once decided which
- * commit it pointed at: whichever push run finished its build last, even an older commit's, and a push
- * that happened before the non-root smoke test, so an image that failed the smoke had already moved it.
- * The branch tag is now a final step that runs only after the smoke passes and only while the commit is
- * still the branch head; the build itself publishes nothing but the immutable `:<sha>` tag.
+ * AuraWa: CI validates the image and never publishes it. Upstream pushed a `:<sha>` image on every
+ * push to main and re-pointed a `:main` branch tag; in AuraWa an ordinary push must not put anything in
+ * a registry, so images are published only by release.yml from an AuraWa release tag. The job still
+ * builds both architectures and runs the image smoke tests, so a broken image fails CI as before.
  */
-describe('ci.yml moves the branch image tag only for the tested branch head', () => {
+describe('ci.yml validates the image without publishing it', () => {
   type CiStep = Step & { if?: string; id?: string };
   type CiWorkflow = {
     concurrency?: { group?: string; 'cancel-in-progress'?: boolean | string };
-    jobs?: Record<string, { steps?: CiStep[] }>;
+    jobs?: Record<string, { permissions?: Record<string, string> | string; steps?: CiStep[] }>;
   };
   const ci = (): CiWorkflow => workflowOf('ci.yml');
   const dockerSteps = (): CiStep[] => ci().jobs?.docker?.steps ?? [];
@@ -465,27 +464,31 @@ describe('ci.yml moves the branch image tag only for the tested branch head', ()
     expect(concurrency?.group).not.toMatch(/github\.ref\b/);
   });
 
-  it('never publishes the branch tag from the build step', () => {
+  it('holds no package write grant and never logs in to a registry', () => {
+    const permissions = ci().jobs?.docker?.permissions;
+    expect(permissions).toEqual({ contents: 'read' });
+    expect(dockerSteps().filter(step => (step.uses ?? '').startsWith('docker/login-action'))).toEqual([]);
+  });
+
+  it('never pushes an image or moves a tag', () => {
+    const builds = dockerSteps().filter(step => (step.uses ?? '').startsWith('docker/build-push-action'));
+    // Vacuity guard: the multi-arch build and the single-arch smoke load.
+    expect(builds.length).toBeGreaterThanOrEqual(2);
+    for (const step of builds) {
+      const push = (step.with as { push?: unknown } | undefined)?.push;
+      expect(push === undefined || push === false).toBe(true);
+    }
+    expect(dockerSteps().filter(step => executableLines(step.run ?? '').includes('imagetools create'))).toEqual([]);
     const tagRules = dockerSteps()
       .filter(step => (step.uses ?? '').startsWith('docker/metadata-action'))
       .map(step => String((step.with as { tags?: string } | undefined)?.tags ?? ''));
-    expect(tagRules.length).toBe(1);
     expect(executableLines(tagRules.join('\n'))).not.toContain('type=ref,event=branch');
   });
 
-  it('re-points the branch tag as the last step, after the smoke, on push, only at the branch head', () => {
-    const steps = dockerSteps();
-    const smoke = steps.findIndex(step => executableLines(step.run ?? '').includes('smoke-test-non-root.sh'));
-    const retag = steps.findIndex(step => executableLines(step.run ?? '').includes('imagetools create'));
-    expect(smoke).toBeGreaterThan(-1);
-    expect(retag).toBeGreaterThan(smoke);
-    // Last, so every check added to this job gates the branch tag, not only the non-root smoke.
-    expect(retag).toBe(steps.length - 1);
-    const step = steps[retag];
-    expect(step.if ?? '').toContain("github.event_name == 'push'");
-    const run = executableLines(step.run ?? '');
-    expect(run).toMatch(/git ls-remote/);
-    expect(run).toMatch(/GITHUB_SHA/);
+  it('still smoke-tests the image it builds', () => {
+    const runs = dockerSteps().map(step => executableLines(step.run ?? ''));
+    expect(runs.some(run => run.includes('smoke-test-non-root.sh'))).toBe(true);
+    expect(runs.some(run => run.includes('smoke-test-engine-libs.sh'))).toBe(true);
   });
 });
 

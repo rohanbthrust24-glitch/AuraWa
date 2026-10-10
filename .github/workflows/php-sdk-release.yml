@@ -25,6 +25,9 @@ permissions:
 
 jobs:
   release:
+    # AuraWa: the PHP SDK package and its split repository are upstream-owned. This job runs only in
+    # the upstream repository, so no AuraWa tag or manual dispatch can publish or release it.
+    if: github.repository == 'rmyndharis/OpenWA'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
