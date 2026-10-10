@@ -159,14 +159,22 @@ is visible only through `GET /api/sessions/{id}`, which AuraClinic already polls
 
 ## The minimum switch (later phase, not applied)
 
-Only the image source changes; the service name, container settings, environment, volume, network and healthcheck stay
-as they are:
+The image source changes, and two container settings change with it; the service name, environment, volume, network
+and healthcheck stay as they are:
 
 ```yaml
 openwa:
   # was: build.context https://github.com/rmyndharis/OpenWA.git#v0.24.0 + image genic-clinic-ai-openwa:0.24.0
   image: ghcr.io/rohanbthrust24-glitch/aurawa:0.24.0-aurawa.1
+  stop_grace_period: 75s # was 45s
+  cap_add: [CHOWN, DAC_OVERRIDE, FOWNER, KILL, SETGID, SETUID] # KILL is new
 ```
+
+`KILL` is what lets a stop reach the app. AuraClinic's current hardening (`cap_drop: ALL` plus the five capabilities
+above it) leaves `dumb-init`, PID 1 as root, unable to forward `SIGTERM` to the `openwa` process, so every `docker stop`
+or restart skips the graceful drain and ends in a SIGKILL. This was reproduced with the same image and fixed in
+AuraWa's own compose files and chart; it applies to the current OpenWA gateway too, since its image and hardening are
+the same. The 75s grace covers the drain's bounds (see `docker-compose.yml`).
 
 Building from source instead is also possible
 (`build.context: https://github.com/rohanbthrust24-glitch/AuraWa.git#v0.24.0-aurawa.1` with

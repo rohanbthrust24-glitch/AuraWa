@@ -24,8 +24,13 @@ services:
       - CHOWN
       - DAC_OVERRIDE
       - FOWNER
+      - KILL # dumb-init (root) forwards SIGTERM to the openwa process; see docker-compose.yml
       - SETGID
       - SETUID
+    # AuraWa: deliberately no stop_grace_period here (Docker's 10s default), unlike the 75s in
+    # docker-compose.yml. NODE_ENV=development sets SHUTDOWN_DELAY_MS to 0, so a stop normally ends in
+    # seconds and dev restarts stay fast; a slow engine teardown can still be cut short and leave a
+    # session profile to relink. Add `stop_grace_period: 75s` when testing shutdown with linked sessions.
     read_only: true
     tmpfs:
       - /tmp

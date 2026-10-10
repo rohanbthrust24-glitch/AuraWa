@@ -77,9 +77,10 @@ resources:
     memory: 2Gi
     cpu: 1000m
 
-# Matches docker-compose stop_grace_period: graceful drain + per-engine Chromium
-# teardown can exceed the 30s k8s default.
-terminationGracePeriodSeconds: 45
+# Matches docker-compose stop_grace_period: drain (SHUTDOWN_DELAY_MS, up to 30s)
+# + engine teardown (up to 20s) + webhook drain (5s) + Redis quits can exceed
+# the 30s k8s default. AuraWa: raised from 45, matching upstream's later value.
+terminationGracePeriodSeconds: 75
 
 # Pod-level securityContext, empty by default. The default image start is as
 # root: the entrypoint re-owns /app/data and the XDG dirs, then drops to the
@@ -107,14 +108,19 @@ terminationGracePeriodSeconds: 45
 # fsGroup is what makes a fresh volume writable by it. OnRootMismatch makes the
 # kubelet re-own the volume only when its root has the wrong group or mode,
 # instead of touching every file on every mount. `add: null` removes the
-# default list below; Helm merges maps, so leaving it out keeps all five.
+# default list below; Helm merges maps, so leaving it out keeps all six. The
+# non-root start needs none of them, KILL included: dumb-init then runs as the
+# same uid as the app, so it may signal it without CAP_KILL.
 # The RuntimeDefault seccomp profile is opt-in (it can also be set alone,
 # under either context) until a whatsapp-web.js session start under it has
 # been confirmed on arm64, where the image uses Debian's Chromium.
 podSecurityContext: {}
 
-# Parity with docker-compose hardening. The five added capabilities are used
-# only by the root entrypoint (chown, then the gosu drop); see
+# Parity with docker-compose hardening. CHOWN, DAC_OVERRIDE, FOWNER, SETGID and
+# SETUID are used only by the root entrypoint (chown, then the gosu drop). KILL
+# lets dumb-init, which stays PID 1 as root, forward SIGTERM to the openwa
+# process: without it the signal is refused, the graceful drain never runs and
+# the pod is SIGKILLed at the end of terminationGracePeriodSeconds. See
 # podSecurityContext above for the non-root alternative.
 containerSecurityContext:
   readOnlyRootFilesystem: true
@@ -126,6 +132,7 @@ containerSecurityContext:
       - CHOWN
       - DAC_OVERRIDE
       - FOWNER
+      - KILL
       - SETGID
       - SETUID
 

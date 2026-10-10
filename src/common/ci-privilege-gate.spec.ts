@@ -493,6 +493,66 @@ describe('ci.yml validates the image without publishing it', () => {
 });
 
 /**
+ * AuraWa: dumb-init stays PID 1 as root and forwards SIGTERM to the openwa process the entrypoint
+ * dropped to with gosu. Signalling another uid needs CAP_KILL, so a hardened root start (cap_drop ALL)
+ * that does not re-add KILL has the forward refused: the app never sees the signal, its drain never
+ * runs, and `docker stop` ends in a SIGKILL at the end of the grace period. Every root-start config
+ * therefore re-adds KILL with the entrypoint's five capabilities, the graceful-stop smoke test runs
+ * the image under that same list, and the production grace period covers the drain's bounds.
+ */
+describe('the root start keeps CAP_KILL so SIGTERM reaches the app', () => {
+  const root = path.join(__dirname, '..', '..');
+  const REQUIRED = ['CHOWN', 'DAC_OVERRIDE', 'FOWNER', 'KILL', 'SETGID', 'SETUID'];
+  type Service = { container_name?: string; cap_drop?: string[]; cap_add?: string[]; stop_grace_period?: string };
+  const apiService = (file: string): Service | undefined =>
+    Object.values(
+      (yaml.load(fs.readFileSync(path.join(root, file), 'utf8')) as { services: Record<string, Service> }).services,
+    ).find(service => service.container_name === 'openwa-api');
+  type ChartValues = {
+    terminationGracePeriodSeconds?: number;
+    containerSecurityContext?: { capabilities?: { drop?: string[]; add?: string[] } };
+  };
+  const chart = (): ChartValues =>
+    yaml.load(fs.readFileSync(path.join(root, 'charts', 'openwa', 'values.yaml'), 'utf8')) as ChartValues;
+  const smokeScript = (): string => fs.readFileSync(path.join(root, 'scripts', 'smoke-test-graceful-stop.sh'), 'utf8');
+
+  it.each(['docker-compose.yml', 'docker-compose.dev.yml'])(
+    '%s re-adds KILL with the entrypoint capabilities',
+    file => {
+      const service = apiService(file);
+      expect(service).toBeDefined();
+      expect(service?.cap_drop).toEqual(['ALL']);
+      expect([...(service?.cap_add ?? [])].sort()).toEqual(REQUIRED);
+    },
+  );
+
+  it('the chart default re-adds the same capabilities', () => {
+    const capabilities = chart().containerSecurityContext?.capabilities;
+    expect(capabilities?.drop).toEqual(['ALL']);
+    expect([...(capabilities?.add ?? [])].sort()).toEqual(REQUIRED);
+  });
+
+  it('the graceful-stop smoke test runs the image under the same capability list', () => {
+    const list = smokeScript().match(/^CAP_ADD="\$\{OPENWA_SMOKE_CAP_ADD:-([A-Z_ ]+)\}"$/m)?.[1];
+    expect(list?.split(' ').sort()).toEqual(REQUIRED);
+    expect(smokeScript()).toMatch(/--cap-drop ALL \$CAP_ARGS/);
+  });
+
+  it('ci.yml runs the graceful-stop smoke test on the built image, after the non-root drop check', () => {
+    const steps = (workflowOf('ci.yml').jobs?.docker?.steps ?? []).map(step => executableLines(step.run ?? ''));
+    const nonRoot = steps.findIndex(run => run.includes('smoke-test-non-root.sh'));
+    const graceful = steps.findIndex(run => run.includes('./scripts/smoke-test-graceful-stop.sh'));
+    expect(nonRoot).toBeGreaterThan(-1);
+    expect(graceful).toBeGreaterThan(nonRoot);
+  });
+
+  it('the production compose file and the chart give the drain the same 75s grace', () => {
+    expect(apiService('docker-compose.yml')?.stop_grace_period).toBe('75s');
+    expect(chart().terminationGracePeriodSeconds).toBe(75);
+  });
+});
+
+/**
  * A job without `timeout-minutes` runs to GitHub's 360-minute default. A hung dashboard test run once
  * held its job for half an hour and still reported green, and a stalled apt mirror held another for
  * over an hour, so every job carries its own bound: a hang turns into a prompt red job instead.

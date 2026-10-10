@@ -49,11 +49,14 @@ services:
       dockerfile: Dockerfile
     container_name: openwa-api
     restart: unless-stopped
-    # Give the graceful drain room to complete before Docker SIGKILLs the container: the shutdown
-    # grace (SHUTDOWN_DELAY_MS, default 3s) plus the worst-case per-engine teardown bound (~10s) can
-    # exceed Docker's 10s default, which would otherwise kill Chromium mid-teardown and orphan a
-    # session profile. Tune down if you raise neither SHUTDOWN_DELAY_MS nor run many sessions.
-    stop_grace_period: 45s
+    # Give the graceful drain room to complete before Docker SIGKILLs the container, which would kill
+    # Chromium mid-teardown and orphan a session profile. Bounded stages in order: drain
+    # (SHUTDOWN_DELAY_MS, default 3s, capped at 30s) + engine teardown (destroy then forceDestroy, 10s
+    # each; engines stop in parallel, so the session count does not add) + webhook drain
+    # (WEBHOOK_SHUTDOWN_DRAIN_MS, default 5s) + 2s per Redis quit when REDIS_ENABLED. About 28s with the
+    # defaults and 55s+ with the drain at its cap, so 45s was not enough. AuraWa: raised from 45s,
+    # matching upstream's later value. Raise it by the same amount if you raise either drain setting.
+    stop_grace_period: 75s
     # App network for datastores + the isolated network to reach
     # docker-proxy (DOCKER_HOST). createService() in docker.service.ts attaches
     # orchestrated containers to the literal `openwa-network`, so its name is fixed.
@@ -74,6 +77,10 @@ services:
       - CHOWN # entrypoint: chown openwa /app/data on the named volume
       - DAC_OVERRIDE # entrypoint: chown across pre-existing files
       - FOWNER
+      # dumb-init (PID 1, root) forwards SIGTERM to the openwa process after gosu drops uid; signalling
+      # another uid needs CAP_KILL, and without it `docker stop` skips the graceful drain and ends in a
+      # SIGKILL. scripts/smoke-test-graceful-stop.sh proves the drain runs.
+      - KILL
       - SETGID # gosu: drop to the openwa group
       - SETUID # gosu: drop to the openwa user
     read_only: true

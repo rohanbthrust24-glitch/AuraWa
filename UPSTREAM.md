@@ -21,11 +21,11 @@ original placeholder README.
 
 ## AuraWa changes relative to upstream
 
-AuraWa does not modify OpenWA's application code: no file under `src/` (other than the two repository-policy specs
+AuraWa does not modify OpenWA's application code: no file under `src/` (other than the repository-policy spec changes
 listed below), `dashboard/` (other than its lockfile), `sdk/` or `test/`, and neither `package.json`, differs from
 upstream, and the API, internal package names and `X-OpenWA-*` webhook headers are upstream's. AuraWa's changes are
-limited to repository automation, image identity, documentation, and security updates of locked dependency versions
-within the ranges upstream declares.
+limited to repository automation, image identity, documentation, security updates of locked dependency versions within
+the ranges upstream declares, and deployment configuration (container capabilities and stop grace period).
 
 ### 2026-10-10: independent build identity and safe repository automation
 
@@ -65,13 +65,37 @@ though newer in-range releases exist, to keep the change minimal.
 When AuraWa is re-based onto a newer upstream release, keep these versions only if that release's lockfiles still
 carry older ones.
 
+### 2026-10-10: graceful shutdown (`CAP_KILL` and stop grace period)
+
+`docker stop` never reached the app: `dumb-init` stays PID 1 as root and forwards `SIGTERM` to the `openwa` process
+that `gosu` dropped to, and signalling another uid needs `CAP_KILL`, which the compose and chart hardening
+(`cap_drop: ALL` plus five capabilities) removed. The forward was refused, the graceful drain never ran, and every
+stop ended in a SIGKILL after the grace period (exit 137). Reproduced in disposable containers: adding `KILL` gives a
+graceful exit 0 in about 3 s. Upstream's later `main` makes the same `KILL` change in its compose file and chart and
+raises the grace period to 75 s; this backports only those settings. No application or image change.
+
+| File                                                                                              | Change                                                                                                                                                 | Why                                                                                 |
+| ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------- |
+| `docker-compose.yml`                                                                              | `KILL` added to the `openwa-api` `cap_add`; `stop_grace_period` 45s → 75s, comment recomputed for this code's drain bounds                             | Let `SIGTERM` reach the app; leave room for drain + engine teardown + webhook drain |
+| `docker-compose.dev.yml`                                                                          | `KILL` added; grace period deliberately left at Docker's default, with a comment                                                                       | Development stops quickly (no drain delay); documented trade-off                    |
+| `charts/openwa/values.yaml`                                                                       | `KILL` added to `containerSecurityContext.capabilities.add`; `terminationGracePeriodSeconds` 45 → 75; comments updated                                 | Same fix for Kubernetes; the non-root start needs none of the capabilities          |
+| `docs/12-troubleshooting-faq.md`, `docs/13-horizontal-scaling.md`, `docs/30-plugin-sandboxing.md` | Capability lists include `KILL` and say why                                                                                                            | Keep the documented hardening equal to the shipped one                              |
+| `scripts/smoke-test-graceful-stop.sh`                                                             | New: runs the image under the compose hardening and asserts the drain logs, exit 0 well before the timeout, and the `openwa` user                      | Proves a stop reaches the app; fails (137, no drain) without `KILL`                 |
+| `.github/workflows/ci.yml`                                                                        | The `docker` job runs the graceful-stop smoke test after the non-root check                                                                            | Gate the fix on every push                                                          |
+| `src/common/ci-privilege-gate.spec.ts`                                                            | New drift checks: both compose files, the chart and the smoke test share the six capabilities; CI runs the smoke test; compose and chart agree on 75 s | A future change cannot drop `KILL` silently                                         |
+
+AuraClinic's compose file has the same hardening and needs the same two settings when it switches to AuraWa
+(`docs/aurawa/auraclinic-integration.md`).
+
 ### Reviewed and deliberately left as upstream
 
 - Runtime branding: the OpenAPI contact (`src/config/swagger.config.ts`, mirrored in `openapi.json`), dashboard titles,
   the `openwa` user and package name, `X-OpenWA-*` headers. Changing them alters the API contract clients depend on.
-- `charts/openwa` (image `ghcr.io/rmyndharis/openwa`, upstream home/sources): AuraClinic does not use the chart, and
-  AuraWa has no published image yet. Repoint it together with the first AuraWa release if the chart is ever used.
-- `docker-compose.yml` / `docker-compose.dev.yml`: upstream's reference stack; they build from the local source.
+- `charts/openwa` image and metadata (image `ghcr.io/rmyndharis/openwa`, upstream home/sources; only the capability
+  and grace-period values changed, above): AuraClinic does not use the chart, and AuraWa has no published image yet.
+  Repoint it together with the first AuraWa release if the chart is ever used.
+- `docker-compose.yml` / `docker-compose.dev.yml` otherwise: upstream's reference stack; they build from the local
+  source.
 - `CHANGELOG.md` and `docs/` (other than `docs/aurawa/`): upstream's history and documentation.
 - `.github/dependabot.yml`, `sdk-ci.yml`, `.env.example`, `.env.minimal`: still correct for AuraWa.
 

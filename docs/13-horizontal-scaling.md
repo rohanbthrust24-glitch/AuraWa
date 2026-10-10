@@ -467,8 +467,9 @@ spec:
             allowPrivilegeEscalation: false
             capabilities:
               drop: ['ALL']
-              # Only for the root entrypoint's chown and the gosu privilege drop.
-              add: ['CHOWN', 'DAC_OVERRIDE', 'FOWNER', 'SETGID', 'SETUID']
+              # The root entrypoint's chown and gosu privilege drop, plus KILL so dumb-init (PID 1,
+              # root) can forward SIGTERM to the openwa process for a graceful drain.
+              add: ['CHOWN', 'DAC_OVERRIDE', 'FOWNER', 'KILL', 'SETGID', 'SETUID']
           resources:
             requests:
               memory: '512Mi'
