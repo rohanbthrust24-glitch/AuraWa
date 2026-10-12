@@ -118,6 +118,12 @@ describe('bannerKeyLine (startup banner key masking)', () => {
   it('passes a placeholder through unchanged', () => {
     expect(bannerKeyLine('(check dashboard for keys)', false)).toBe('(check dashboard for keys)');
   });
+
+  it('never shows a short key in full: the fingerprint is at most a quarter of the key', () => {
+    const line = bannerKeyLine('abcdefgh', false);
+    expect(line).not.toContain('abcdefgh');
+    expect(line.startsWith('ab…')).toBe(true);
+  });
 });
 
 describe('AuthService', () => {
@@ -1182,6 +1188,74 @@ describe('AuthService', () => {
 
       expect(unlinkSpy).not.toHaveBeenCalled();
       expect(bannerText()).toMatch(/\(full key in \S*data\/\.api-key\)/);
+    });
+
+    describe('first boot (no keys yet)', () => {
+      const SUPPLIED_KEY = 'aurawa-supplied-0123456789abcdef0123456789abcdef';
+      let writeSpy: jest.SpyInstance;
+      let otherLogSpies: jest.SpyInstance[];
+      let originalMasterKey: string | undefined;
+      let originalDevKey: string | undefined;
+
+      // Everything the service logged at any level, so a key leaking outside the banner is caught too.
+      const allLogged = (): string =>
+        [logSpy, ...otherLogSpies]
+          .flatMap(spy => (spy.mock.calls as unknown[][]).map(call => JSON.stringify(call)))
+          .join('\n');
+
+      beforeEach(() => {
+        originalMasterKey = process.env.API_MASTER_KEY;
+        originalDevKey = process.env.ALLOW_DEV_API_KEY;
+        delete process.env.API_MASTER_KEY;
+        delete process.env.ALLOW_DEV_API_KEY;
+        (repository.count as jest.Mock).mockResolvedValue(0);
+        (repository.create as jest.Mock).mockImplementation((dto: Partial<ApiKey>) => ({ ...dto, id: 'uuid-seed' }));
+        // writeSecretFile: keep the seeded key off the real data/.api-key.
+        writeSpy = jest.spyOn(fs, 'writeFileSync').mockImplementation(() => undefined);
+        jest.spyOn(fs, 'chmodSync').mockImplementation(() => undefined);
+        const logger = (service as unknown as { logger: Record<string, (...args: unknown[]) => void> }).logger;
+        otherLogSpies = ['warn', 'error', 'debug', 'verbose'].map(level =>
+          jest.spyOn(logger, level).mockImplementation(() => undefined),
+        );
+      });
+
+      afterEach(() => {
+        if (originalMasterKey === undefined) delete process.env.API_MASTER_KEY;
+        else process.env.API_MASTER_KEY = originalMasterKey;
+        if (originalDevKey === undefined) delete process.env.ALLOW_DEV_API_KEY;
+        else process.env.ALLOW_DEV_API_KEY = originalDevKey;
+      });
+
+      it('never prints an operator-supplied API_MASTER_KEY in full: banner shows its fingerprint and file path', async () => {
+        process.env.API_MASTER_KEY = SUPPLIED_KEY;
+
+        await service.onModuleInit();
+
+        expect(allLogged()).not.toContain(SUPPLIED_KEY);
+        expect(allLogged()).not.toContain(SUPPLIED_KEY.slice(8)); // the secret tail
+        expect(bannerText()).toContain(`${SUPPLIED_KEY.slice(0, 8)}…`);
+        expect(bannerText()).toMatch(/\(full key in \S*data\/\.api-key\)/);
+        // Seeding is unchanged: the supplied key is still saved to the bootstrap file.
+        expect(writeSpy).toHaveBeenCalledWith(expect.stringContaining('.api-key'), SUPPLIED_KEY, { mode: 0o600 });
+      });
+
+      it('still masks a supplied key that carries surrounding whitespace', async () => {
+        process.env.API_MASTER_KEY = `  ${SUPPLIED_KEY}\n`;
+
+        await service.onModuleInit();
+
+        expect(allLogged()).not.toContain(SUPPLIED_KEY.slice(8));
+        expect(bannerText()).toMatch(/\(full key in \S*data\/\.api-key\)/);
+      });
+
+      it('still prints a generated key in full once, as before', async () => {
+        await service.onModuleInit();
+
+        const [, generated] = (writeSpy.mock.calls as [string, string][])[0];
+        expect(generated).toMatch(/^owa_k1_[0-9a-f]{64}$/);
+        expect(bannerText()).toContain('API Key (newly created)');
+        expect(bannerText()).toContain(generated);
+      });
     });
   });
 

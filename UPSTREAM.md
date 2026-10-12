@@ -21,11 +21,12 @@ original placeholder README.
 
 ## AuraWa changes relative to upstream
 
-AuraWa does not modify OpenWA's application code: no file under `src/` (other than the repository-policy spec changes
-listed below), `dashboard/` (other than its lockfile), `sdk/` or `test/`, and neither `package.json`, differs from
-upstream, and the API, internal package names and `X-OpenWA-*` webhook headers are upstream's. AuraWa's changes are
-limited to repository automation, image identity, documentation, security updates of locked dependency versions within
-the ranges upstream declares, and deployment configuration (container capabilities and stop grace period).
+AuraWa keeps OpenWA's application code: apart from the startup-banner change and the repository-policy spec changes
+listed below, no file under `src/`, `dashboard/` (other than its lockfile), `sdk/` or `test/`, and neither
+`package.json`, differs from upstream, and the API, internal package names and `X-OpenWA-*` webhook headers are
+upstream's. AuraWa's changes are limited to repository automation, image identity, documentation, security updates of
+locked dependency versions within the ranges upstream declares, deployment configuration (container capabilities and
+stop grace period), and keeping an operator-supplied admin key out of the startup log.
 
 ### 2026-10-10: independent build identity and safe repository automation
 
@@ -87,6 +88,22 @@ raises the grace period to 75 s; this backports only those settings. No applicat
 AuraClinic's compose file has the same hardening and needs the same two settings when it switches to AuraWa
 (`docs/aurawa/auraclinic-integration.md`).
 
+### 2026-10-12: operator-supplied admin key masked in the first-boot banner
+
+On first boot (no API key yet) the startup banner printed the seeded admin key in full, including a key the operator
+supplied through `API_MASTER_KEY`, so that key reached the container log pipeline. A supplied key is now masked as on
+every later boot: a short fingerprint plus the key file path (the operator already holds the key). A generated key is
+still printed in full once, as upstream does, because the banner is how a first-time operator learns it (it is also
+written to `data/.api-key`). The fingerprint is now at most a quarter of the key, so a short non-production key is
+never shown in full; keys of 32 or more characters (every generated key and every production key) keep upstream's
+8-character fingerprint. Seeding, the key file and authentication are unchanged.
+
+| File                                    | Change                                                                                                                                                                                                                  | Why                                                |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------- |
+| `src/modules/auth/auth.service.ts`      | `onModuleInit` masks the banner line when `API_MASTER_KEY` is set; `bannerKeyLine` caps the fingerprint at a quarter of the key                                                                                         | A supplied key is never written to the log in full |
+| `src/modules/auth/auth.service.spec.ts` | New: first boot with a supplied key (also with surrounding whitespace) logs no full key at any level and shows the fingerprint and file path; a generated key is still printed once; a short key is never shown in full | Pin the behaviour                                  |
+| `.env.example`                          | The `API_MASTER_KEY` comment says a supplied key is never printed in full                                                                                                                                               | Document it where the key is set                   |
+
 ### Reviewed and deliberately left as upstream
 
 - Runtime branding: the OpenAPI contact (`src/config/swagger.config.ts`, mirrored in `openapi.json`), dashboard titles,
@@ -97,7 +114,8 @@ AuraClinic's compose file has the same hardening and needs the same two settings
 - `docker-compose.yml` / `docker-compose.dev.yml` otherwise: upstream's reference stack; they build from the local
   source.
 - `CHANGELOG.md` and `docs/` (other than `docs/aurawa/`): upstream's history and documentation.
-- `.github/dependabot.yml`, `sdk-ci.yml`, `.env.example`, `.env.minimal`: still correct for AuraWa.
+- `.github/dependabot.yml`, `sdk-ci.yml`, `.env.minimal`, and `.env.example` other than the comment above: still
+  correct for AuraWa.
 
 ## Keeping this record current
 

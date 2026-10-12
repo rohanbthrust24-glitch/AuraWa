@@ -66,11 +66,17 @@ export function resolveSeedApiKey(): string {
  * pipeline (Docker/Loki/CloudWatch) on each restart — it stays in `data/.api-key` (0600), or wherever
  * `BOOTSTRAP_KEY_FILE` points; the dashboard only ever shows a key's prefix. A placeholder
  * (e.g. "(check dashboard for keys)") is passed through unchanged.
+ *
+ * AuraWa: callers pass `isNewKey = false` for an operator-supplied `API_MASTER_KEY`, so it is masked
+ * even on first boot (the operator already holds it). The fingerprint is at most a quarter of the
+ * key, so a short non-production key is never printed in full; keys of 32+ characters (every
+ * generated key and every production key) keep the 8-character fingerprint.
  */
 export function bannerKeyLine(displayKey: string, isNewKey: boolean): string {
   if (isNewKey) return displayKey;
   if (displayKey.startsWith('(')) return displayKey;
-  return `${displayKey.slice(0, 8)}… (full key in ${bootstrapKeyFilePath()})`;
+  const visible = Math.min(8, Math.floor(displayKey.length / 4));
+  return `${displayKey.slice(0, visible)}… (full key in ${bootstrapKeyFilePath()})`;
 }
 
 @Injectable()
@@ -90,6 +96,8 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     const count = await this.apiKeyRepository.count();
     let displayKey: string;
     let isNewKey = false;
+    // AuraWa: an operator-supplied API_MASTER_KEY is never printed in full, not even on first boot.
+    const operatorSuppliedKey = Boolean(process.env.API_MASTER_KEY?.trim());
 
     if (count === 0) {
       displayKey = resolveSeedApiKey();
@@ -127,7 +135,7 @@ export class AuthService implements OnModuleInit, OnModuleDestroy {
     } else {
       this.logger.log('  🔑 API Key:');
     }
-    this.logger.log(`     ${bannerKeyLine(displayKey, isNewKey)}`);
+    this.logger.log(`     ${bannerKeyLine(displayKey, isNewKey && !operatorSuppliedKey)}`);
     this.logger.log('');
     this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     this.logger.log('');
